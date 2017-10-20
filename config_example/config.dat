@@ -1,0 +1,22 @@
+workspace "./workspace"
+
+"base"
+  { x: 0
+  , y: 220
+  , shadow: #000000
+  , size: 26
+  , font: "MS UI Gothic"
+  , position: (center, middle)
+  }
+
+"琴葉 茜"("base")
+  { color: #FFB0D6
+  }
+
+"琴葉 葵"("base")
+  { color: #85DFFF
+  }
+
+"結月ゆかり(v1)"("base")
+  { color: #FF40BE
+  }

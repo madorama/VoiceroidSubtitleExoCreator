@@ -1,4 +1,4 @@
-# VoiceroidExoSubtitleCreator
+# VoiceroidSubtitleExoCreator
 
 VOICEROID2の「1文毎に区切って複数のファイルに書き出す」で書き出されたファイルとconfig.datをもとに、字幕の.exoファイルを生成するツールです。
 

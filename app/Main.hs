@@ -1,5 +1,4 @@
 {-# LANGUAGE Strict #-}
-{-# LANGUAGE UnicodeSyntax #-}
 
 module Main where
 
@@ -53,37 +52,31 @@ main = do
 
 run :: Config -> IO ()
 run config = do
-  ----------------------------------------
-  -- Workspace内の全てのtxtファイルを読み、
-  -- プリセット名をkey、[(ファイル名,文章)]をvalueとしたMapを作成
-  ----------------------------------------
   setCurrentDirectory (config ^. workspace)
   work <- getCurrentDirectory
-  files <- filter (isExtension "txt") <$> listDirectory "."
-  -- ファイル名から拡張子を取り除く
-  files <- pure $ map dropExtension files
+
+  files <- getDropExtensionTextFiles work
   presetMap <- genPresetMap files
-  ----------------------------------------
-  -- 現在の時間を基にフォルダを作成
-  ----------------------------------------
-  lt <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
-  let newDir = formatTime defaultTimeLocale "%Y%m%d%H%M%S" lt
+
+  newDir <- formatCurrentLocalTime "%Y%m%d%H%M%S"
   createDirectory newDir
-  ----------------------------------------
-  -- 全ての音声ファイル(と一応txtも)を先程作ったフォルダに移動
-  ----------------------------------------
-  forM_ files
-    (\file -> do
-      let wavFile = addExtension file "wav"
-      copyFile wavFile (newDir </> wavFile)
-      removeFile wavFile
-      removeFile (addExtension file "txt")
-    )
-  ----------------------------------------
-  -- Exo生成
-  ----------------------------------------
+
+  moveWaveAndTextFiles newDir files
+
   saveDir $ createExo newDir presetMap (config ^. configs)
-  return ()
+  where
+    getDropExtensionTextFiles path =
+      map dropExtension . filter (isExtension "txt") <$> listDirectory path
+    formatCurrentLocalTime str = do
+      lt <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
+      pure $ formatTime defaultTimeLocale str lt
+    moveWaveAndTextFiles path files = forM_ files move
+      where
+        move file = do
+          let wavFile = addExtension file "wav"
+          copyFile wavFile (path </> wavFile)
+          removeFile wavFile
+          removeFile (addExtension file "txt")
 
 type PresetMap = Map String [(FilePath, String)]
 

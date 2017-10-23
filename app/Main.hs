@@ -55,28 +55,30 @@ run config = do
   setCurrentDirectory (config ^. workspace)
   work <- getCurrentDirectory
 
-  files <- getDropExtensionTextFiles work
-  presetMap <- genPresetMap files
+  dirFiles <- listDirectory work
+  let files = map dropExtension $ filter (isExtension "txt") dirFiles
+  fileData <- forM files $ \file -> do
+    text <- readFile (addExtension file "txt")
+    return (file, text)
 
-  newDir <- formatCurrentLocalTime "%Y%m%d%H%M%S"
-  createDirectory newDir
+  case genPresetMap fileData of
+    Left errs -> mapM_ print errs
+    Right presetMap -> do
+      newDir <- formatCurrentLocalTime "%Y%m%d%H%M%S"
+      createDirectory newDir
+      moveWaveAndTextFiles newDir files
+      saveDir $ createExo newDir presetMap (config ^. configs)
 
-  moveWaveAndTextFiles newDir files
-
-  saveDir $ createExo newDir presetMap (config ^. configs)
   where
-    getDropExtensionTextFiles path =
-      map dropExtension . filter (isExtension "txt") <$> listDirectory path
     formatCurrentLocalTime str = do
       lt <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
       pure $ formatTime defaultTimeLocale str lt
-    moveWaveAndTextFiles path files = forM_ files move
-      where
-        move file = do
-          let wavFile = addExtension file "wav"
-          copyFile wavFile (path </> wavFile)
-          removeFile wavFile
-          removeFile (addExtension file "txt")
+    moveWaveAndTextFiles path files =
+      forM_ files $ \file -> do
+        let wavFile = addExtension file "wav"
+        let textFile = addExtension file "txt"
+        renameFile wavFile (path </> wavFile)
+        renameFile textFile (path </> textFile)
 
 type PresetMap = Map String [(FilePath, String)]
 
@@ -84,9 +86,8 @@ createExo :: FilePath -> PresetMap -> Configs -> IO ()
 createExo path pm confs = do
   setCurrentDirectory path
   current <- getCurrentDirectory
-  exos <- concat <$> forM (Map.toList pm) (uncurry (makeExos current))
-  forM_ exos (\(file, exo) -> writeFile (addExtension file "exo") $ printExo exo)
-  return ()
+  exos <- concat <$> mapM (uncurry $ makeExos current) (Map.toList pm)
+  mapM_ (\(file, exo) -> writeFile (addExtension file "exo") $ printExo exo) exos
   where
     makeExos path preset files = forM files (makeExo path preset)
     makeExo path preset (file, value) = do
@@ -109,19 +110,17 @@ createExo path pm confs = do
               & Exo.objects .~ [ textObj, audioObj ]
       return (file, object)
 
-genPresetMap :: [FilePath] -> IO PresetMap
-genPresetMap = aux Map.empty
+genPresetMap :: [(FilePath, String)] -> Either [ParseError] PresetMap
+genPresetMap = aux [] Map.empty
   where
-    aux m [] = return m
-    aux m (path:xs) = do
-      source <- readFile (path ++ ".txt")
-      case parse parseText path source of
-        Left err -> do
-          hPrint stderr err
-          aux m xs
-        Right (presetName, text) -> do
-          let list = (path, text) : fromMaybe [] (Map.lookup presetName m)
-          aux (Map.insert presetName list m) xs
+    aux [] m [] = Right m
+    aux errs m [] = Left errs
+    aux errs m ((path, text):xs) =
+      case parse parseText path text of
+        Left err -> aux (err : errs) m xs
+        Right (presetName, text) ->
+          let list = (path, text) : fromMaybe [] (Map.lookup presetName m) in
+          aux errs (Map.insert presetName list m) xs
 
 parseText :: Parser (String, String)
 parseText =
